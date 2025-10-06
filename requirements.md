@@ -1,0 +1,14 @@
+torch
+transformers
+datasets
+evaluate
+jiwer
+sentencepiece
+accelerate
+numpy
+pandas
+scikit-learn
+matplotlib
+librosa
+soundfile
+tqdm
