@@ -1,6 +1,6 @@
 # ***BEST POSSIBLE PLAN (Aligned with paper)***
 
-Phase 1 - ASR Comparison
+**Phase 1 - ASR Comparison**
 
 Whisper -> baseline  
 
@@ -11,7 +11,7 @@ Custom -> main contribution
 (optional mention Conformer from literature)
 
 
-Phase 2 - Multilingual Handling
+**Phase 2 - Multilingual Handling**
 
 Train Wav2Vec2 on Hindi and English seperately(Language Aware Models)
 
@@ -20,7 +20,7 @@ Train/ Add a Translation model(to Latin by default)
 Test code-mixed speech
 
 
-Phase 3 - Improvement Layer (OWN IDEA)
+**Phase 3 - Improvement Layer (OWN IDEA)**
 
 Grammar correction  
 
@@ -31,22 +31,22 @@ Dictionary filtering
 Use mT5 finetuned model
 
 
-Phase 4 - Summarization
+**Phase 4 - Summarization**
 
 BART / T5 / IndicBART
 
 
-Phase 5 - Chat Bot/ QA layer
+**Phase 5 - Chat Bot/ QA layer**
 
 {Not decided yet}
 
 
-Phase 6 - User Interface
+**Phase 6 - User Interface**
 
 Android java/kotlin App
 
 
-FINAL FLOW SYSTEM:
+**FINAL FLOW SYSTEM:**
 
 Audio Input -> ASR -> Text Normalization & Correction -> Summarization -> Chatbot/ QA Layer -> UI (App)
 
@@ -106,7 +106,7 @@ ASR Output -> Text Correction Model(Correction/ Normalization) -> Summarization 
 ====================================================================
 # **SUMMARIZATION PLAN**
 
-# MODEL
+### MODEL
 1. Use BART, PEGASUS for research perpose as they will give bad results.
 2. Need Multilingual (Hindi + English) nose resistant context-aware model(Transformer/ LLM).
 3. Options:
@@ -124,24 +124,19 @@ ASR Output -> Text Correction Model(Correction/ Normalization) -> Summarization 
 *NOTE(IMP): Need to use hybrid architecture used in industries for the final app:*
 
 ### UPDATED ARCHITECTURE
-📱 App (local)
+```mermaid
+flowchart TD
 
-   ↓
+    A[📱 App (Local)] --> B[🎤 Audio Input]
 
-🎤 Audio input
+    B --> C[🧠 Local ASR<br/>Wav2Vec2]
 
-   ↓
+    C --> D[🌐 API Call]
 
-🧠 Local ASR (your wav2vec2) OR lightweight model
+    D --> E[🤖 LLM<br/>Summarization / Chat]
 
-   ↓
-
-🌐 API call → LLM (summarization/chat)
-
-   ↓
-
-📱 Output shown in app
-
+    E --> F[📱 Smart Notes Output]
+```
 ---
 ---
 
@@ -168,35 +163,25 @@ or
 Desktop app: Use- PyInstaller → convert to .exe
 ---
 ### Final Demo Architecture
-Audio(Hindi/English)
+```mermaid
+flowchart TD
 
-    ↓
+    A[🎤 Audio Input<br/>Hindi / English]
 
-ASR Engine[indicwav2vec-hindi(finetuned) / wav2vec2-base-960h(finetuned)]
+    A --> B[🧠 ASR Engine<br/>IndicWav2Vec Hindi (Fine-tuned)<br/>Wav2Vec2-Base-960h (Fine-tuned)]
 
-    ↓
+    B --> C[📝 Raw Transcripts]
 
-Raw Transcripts
+    C --> D[🧹 Transcript Preprocessing]
 
-    ↓
+    D --> E[🤖 Summarization Engine<br/>IndicBART (Pretrained)<br/>BART-Base (Fine-tuned)]
 
-Preprocessing Transcripts
+    E --> F[📄 Summary Output]
 
-    ↓
+    F --> G[✨ Summary Cleaning]
 
-Summarizaion Engine[IndicBART(pretrained) / BART-base(finetuned)]
-
-    ↓
-
-Summary Output
-
-    ↓
-
-Cleaning Summarization
-
-    ↓
-
-Display Summary/ Feed to LLM
+    G --> H[💬 Display Summary / Feed to LLM]
+```
 ---
 ### Future Upgrades
 1. Fully portable (advanced):
