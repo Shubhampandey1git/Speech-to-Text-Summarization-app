@@ -131,6 +131,23 @@ or
 
 Desktop app: Use- PyInstaller → convert to .exe
 
+### Final Demo Architecture
+Audio(Hindi/English)
+      ↓
+ASR Engine[indicwav2vec-hindi/wav2vec2-base-960h](finetuned)
+      ↓
+Raw Transcripts
+      ↓
+Preprocessing Transcripts
+      ↓
+Summarizaion Engine[IndicBART(pretrained)/BART-base(finetuned)]
+      ↓
+Summary Output
+      ↓
+Cleaning Summarization
+      ↓
+Display Summary/ Feed to LLM
+
 ### Future Upgrades
 1. Fully portable (advanced):
     Quantized models
@@ -142,3 +159,10 @@ Desktop app: Use- PyInstaller → convert to .exe
 3. Edge AI version:
     Tiny ASR model
     Tiny LLM (distilled)
+4. Better LLM cum Summarizer:
+    LLM instead of a summarizer
+5. Better custom ASRs:
+    Better transcription
+    Context and speaker aware
+6. More languages:
+    Add other Indian languages like Marathi
