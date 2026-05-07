@@ -99,13 +99,21 @@ ASR Output -> Text Correction Model(Correction/ Normalization) -> Summarization 
 
 ### UPDATED ARCHITECTURE
 📱 App (local)
+
    ↓
+
 🎤 Audio input
+
    ↓
+
 🧠 Local ASR (your wav2vec2) OR lightweight model
+
    ↓
+
 🌐 API call → LLM (summarization/chat)
+
    ↓
+
 📱 Output shown in app
 
 ====================================================================
@@ -133,19 +141,33 @@ Desktop app: Use- PyInstaller → convert to .exe
 
 ### Final Demo Architecture
 Audio(Hindi/English)
+
       ↓
-ASR Engine[indicwav2vec-hindi/wav2vec2-base-960h](finetuned)
+
+ASR Engine[indicwav2vec-hindi(finetuned) / wav2vec2-base-960h(finetuned)]
+
       ↓
+
 Raw Transcripts
+
       ↓
+
 Preprocessing Transcripts
+
       ↓
-Summarizaion Engine[IndicBART(pretrained)/BART-base(finetuned)]
+
+Summarizaion Engine[IndicBART(pretrained) / BART-base(finetuned)]
+
       ↓
+
 Summary Output
+
       ↓
+
 Cleaning Summarization
+
       ↓
+
 Display Summary/ Feed to LLM
 
 ### Future Upgrades
