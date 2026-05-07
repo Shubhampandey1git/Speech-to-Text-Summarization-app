@@ -166,8 +166,10 @@ flowchart TD
 or
 
 Desktop app: Use- PyInstaller → convert to .exe
+
 ---
 ### Final Demo Architecture
+
 ```mermaid
 flowchart TD
 
