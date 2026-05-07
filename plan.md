@@ -103,7 +103,9 @@ ASR Output -> Text Correction Model(Correction/ Normalization) -> Summarization 
 4. Finetune mT5 model using dataset with noisy ->  clean values.
 5. Use finetuned mT5(multiligual) for LM based grammar correction.
 
-====================================================================
+---
+---
+
 # **SUMMARIZATION PLAN**
 
 ### MODEL
@@ -127,16 +129,19 @@ ASR Output -> Text Correction Model(Correction/ Normalization) -> Summarization 
 ```mermaid
 flowchart TD
 
-    A[📱 App (Local)] --> B[🎤 Audio Input]
+    A["App (Local)"] --> B["Audio Input"]
 
-    B --> C[🧠 Local ASR<br/>Wav2Vec2]
+    B --> C["Local ASR
+    Wav2Vec2"]
 
-    C --> D[🌐 API Call]
+    C --> D["API Call"]
 
-    D --> E[🤖 LLM<br/>Summarization / Chat]
+    D --> E["LLM
+    Summarization / Chat"]
 
-    E --> F[📱 Smart Notes Output]
+    E --> F["Smart Notes Output"]
 ```
+
 ---
 ---
 
@@ -166,21 +171,25 @@ Desktop app: Use- PyInstaller → convert to .exe
 ```mermaid
 flowchart TD
 
-    A[🎤 Audio Input<br/>Hindi / English]
+    A["Audio Input (Hindi / English)"]
 
-    A --> B[🧠 ASR Engine<br/>IndicWav2Vec Hindi (Fine-tuned)<br/>Wav2Vec2-Base-960h (Fine-tuned)]
+    A --> B["ASR Engine
+    IndicWav2Vec Hindi (Fine-tuned)
+    Wav2Vec2-Base-960h (Fine-tuned)"]
 
-    B --> C[📝 Raw Transcripts]
+    B --> C["Raw Transcripts"]
 
-    C --> D[🧹 Transcript Preprocessing]
+    C --> D["Transcript Preprocessing"]
 
-    D --> E[🤖 Summarization Engine<br/>IndicBART (Pretrained)<br/>BART-Base (Fine-tuned)]
+    D --> E["Summarization Engine
+    IndicBART (Pretrained)
+    BART-Base (Fine-tuned)"]
 
-    E --> F[📄 Summary Output]
+    E --> F["Summary Output"]
 
-    F --> G[✨ Summary Cleaning]
+    F --> G["Summary Cleaning"]
 
-    G --> H[💬 Display Summary / Feed to LLM]
+    G --> H["Display Summary / Feed to LLM"]
 ```
 ---
 ### Future Upgrades
