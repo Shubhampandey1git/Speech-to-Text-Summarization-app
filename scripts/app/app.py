@@ -2,6 +2,9 @@ import gradio as gr
 import torch
 import torchaudio
 import re
+import gc
+import os
+import shutil
 from transformers import (
     Wav2Vec2Processor,
     Wav2Vec2ForCTC,
@@ -26,20 +29,42 @@ HINDI_SUMMARIZATION_PATH = "models/summarization/hindi_indicbart_pretrained"
 ENGLISH_SUMMARIZATION_PATH = "models/summarization/english_bart"
 
 # --------------------------------------------------
-# GLOBAL MODEL VARIABLES
+# GLOBAL VARIABLES
 # --------------------------------------------------
 asr_processor = None
 asr_model = None
+
 summarizer = None
-current_language = None
-hindi_tokenizer = None
 hindi_model = None
+hindi_tokenizer = None
+
+current_language = None
 
 # --------------------------------------------------
-# LOAD MODELS DYNAMICALLY
+# VRAM CLEANUP
+# --------------------------------------------------
+def clear_memory():
+    global asr_processor
+    global asr_model
+    global summarizer
+    global hindi_model
+    global hindi_tokenizer
+
+    asr_processor = None
+    asr_model = None
+    summarizer = None
+    hindi_model = None
+    hindi_tokenizer = None
+
+    gc.collect()
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+# --------------------------------------------------
+# DYNAMIC MODEL LOADING
 # --------------------------------------------------
 def load_models(language):
-
     global asr_processor
     global asr_model
     global summarizer
@@ -47,46 +72,56 @@ def load_models(language):
     global hindi_tokenizer
     global current_language
 
-    if current_language == language:
+    # If language changes -> unload old models
+    if current_language != language:
+        print(f"\n--- Switching to {language} ---")
+        clear_memory()
+
+    # If already loaded correctly -> skip
+    if current_language == language and asr_model is not None:
         return
 
-    print(f"Loading {language} models...")
-
-    # ----------------------------------------------
-    # ENGLISH MODELS
-    # ----------------------------------------------
+    # ---------------- ENGLISH ----------------
     if language == "English":
+
+        print("Loading English ASR Model...")
 
         asr_processor = Wav2Vec2Processor.from_pretrained(
             ENGLISH_ASR_PATH
         )
 
         asr_model = Wav2Vec2ForCTC.from_pretrained(
-            ENGLISH_ASR_PATH
+            ENGLISH_ASR_PATH,
+            torch_dtype=torch.float16 if device == "cuda" else torch.float32
         ).to(device)
 
         asr_model.eval()
+
+        print("Loading English Summarization Model...")
 
         summarizer = pipeline(
             "summarization",
             model=ENGLISH_SUMMARIZATION_PATH,
-            device=0 if torch.cuda.is_available() else -1
+            device=-1
         )
 
-    # ----------------------------------------------
-    # HINDI MODELS
-    # ----------------------------------------------
+    # ---------------- HINDI ----------------
     else:
+
+        print("Loading Hindi ASR Model...")
 
         asr_processor = Wav2Vec2Processor.from_pretrained(
             HINDI_ASR_PATH
         )
 
         asr_model = Wav2Vec2ForCTC.from_pretrained(
-            HINDI_ASR_PATH
+            HINDI_ASR_PATH,
+            torch_dtype=torch.float16 if device == "cuda" else torch.float32
         ).to(device)
 
         asr_model.eval()
+
+        print("Loading Hindi Summarization Model...")
 
         hindi_tokenizer = AutoTokenizer.from_pretrained(
             HINDI_SUMMARIZATION_PATH
@@ -94,116 +129,61 @@ def load_models(language):
 
         hindi_model = AutoModelForSeq2SeqLM.from_pretrained(
             HINDI_SUMMARIZATION_PATH
-        ).to(device)
+        ).to("cpu")
 
         hindi_model.eval()
 
     current_language = language
-    print(f"✅ {language} models loaded on {device}")
+
+    print(f"✅ {language} models loaded successfully")
 
 # --------------------------------------------------
-# AUDIO LOADING
+# AUDIO PROCESSING
 # --------------------------------------------------
-def load_audio(audio_data):
+def process_audio(audio_path):
 
-    sampling_rate, speech_array = audio_data
+    speech, sr = torchaudio.load(audio_path)
 
-    speech_array = torch.tensor(
-        speech_array,
-        dtype=torch.float32
-    )
-
-    # Normalize int16 microphone input to float32
-    # Microphone: int16 range (-32768, 32767)
-    # Files: already float32 range (-1.0, 1.0)
-    if speech_array.abs().max() > 1.0:
-        speech_array = speech_array / 32768.0
-
-    # Stereo → mono
-    if len(speech_array.shape) > 1:
-        speech_array = torch.mean(speech_array, dim=1)
-
-    # Resample expects [channel, time]
-    if len(speech_array.shape) == 1:
-        speech_array = speech_array.unsqueeze(0)
+    # Convert stereo -> mono
+    if speech.shape[0] > 1:
+        speech = torch.mean(speech, dim=0, keepdim=True)
 
     # Resample to 16kHz
-    if sampling_rate != 16000:
-        resampler = torchaudio.transforms.Resample(
-            sampling_rate, 16000
-        )
-        speech_array = resampler(speech_array)
-        sampling_rate = 16000
+    if sr != 16000:
+        resampler = torchaudio.transforms.Resample(sr, 16000)
+        speech = resampler(speech)
 
-    speech_array = speech_array.squeeze(0).numpy()
+    # Limit to 15 seconds
+    max_samples = 15 * 16000
+    speech = speech[:, :max_samples]
 
-    return speech_array, sampling_rate
-
-# --------------------------------------------------
-# TRANSCRIPTION
-# --------------------------------------------------
-def transcribe_audio(audio_data, max_seconds=15):
-
-    speech, sr = load_audio(audio_data)
-
-    # Limit audio length to avoid slow processing
-    max_audio_length = max_seconds * 16000
-    speech = speech[:max_audio_length]
-
-    print(f"   Audio length: {len(speech)/16000:.1f}s")
-
-    inputs = asr_processor(
-        speech,
-        sampling_rate=sr,
-        return_tensors="pt",
-        padding=True
-    )
-
-    input_values = inputs.input_values.to(device)
-
-    with torch.no_grad():
-        logits = asr_model(input_values).logits
-
-    predicted_ids = torch.argmax(logits, dim=-1)
-
-    transcription = asr_processor.batch_decode(
-        predicted_ids
-    )[0]
-
-    return transcription
+    return speech.squeeze().numpy()
 
 # --------------------------------------------------
-# TRANSCRIPT CLEANING
+# TEXT CLEANING
 # --------------------------------------------------
-def clean_transcript(text, language):
+def clean_text(text, language):
 
     text = re.sub(r"\s+", " ", text)
 
     if language == "English":
-        text = re.sub(
-            r"[^a-zA-Z0-9\s.,!?']",
-            " ",
-            text
-        )
+        pattern = r"[^a-zA-Z0-9\s.,!?']"
     else:
-        text = re.sub(
-            r"[^\u0900-\u097F\s.,!?0-9]",
-            " ",
-            text
-        )
+        pattern = r"[^\u0900-\u097F\s.,!?0-9]"
 
-    text = re.sub(r"\s+", " ", text)
+    text = re.sub(pattern, " ", text)
 
-    return text.strip()
+    return re.sub(r"\s+", " ", text).strip()
 
 # --------------------------------------------------
 # SUMMARIZATION
 # --------------------------------------------------
 def summarize_text(text, language):
 
-    # ----------------------------------------------
-    # ENGLISH BART
-    # ----------------------------------------------
+    if not text.strip():
+        return "No transcript available."
+
+    # ---------------- ENGLISH ----------------
     if language == "English":
 
         summary = summarizer(
@@ -215,9 +195,7 @@ def summarize_text(text, language):
 
         return summary
 
-    # ----------------------------------------------
-    # HINDI INDICBART
-    # ----------------------------------------------
+    # ---------------- HINDI ----------------
     else:
 
         inputs = hindi_tokenizer(
@@ -229,11 +207,6 @@ def summarize_text(text, language):
 
         inputs.pop("token_type_ids", None)
 
-        inputs = {
-            k: v.to(device)
-            for k, v in inputs.items()
-        }
-
         with torch.no_grad():
 
             summary_ids = hindi_model.generate(
@@ -241,8 +214,7 @@ def summarize_text(text, language):
                 max_length=60,
                 min_length=15,
                 num_beams=3,
-                repetition_penalty=2.0,
-                early_stopping=True
+                repetition_penalty=2.0
             )
 
         summary = hindi_tokenizer.decode(
@@ -250,85 +222,103 @@ def summarize_text(text, language):
             skip_special_tokens=True
         )
 
-        summary = summary.replace("<2hi>", "")
-        summary = summary.replace("summarize:", "")
-        summary = summary.strip()
+        summary = (
+            summary
+            .replace("<2hi>", "")
+            .replace("summarize:", "")
+            .strip()
+        )
 
         return summary
 
 # --------------------------------------------------
-# SUMMARY CLEANING
+# MAIN PIPELINE
 # --------------------------------------------------
-def clean_summary(summary, language):
+def full_pipeline(audio_input, language):
 
-    summary = re.sub(r"\s+", " ", summary)
+    if audio_input is None:
+        return "Please upload or record audio.", "", None
 
-    if language == "English":
-        summary = re.sub(
-            r"[^a-zA-Z0-9\s.,!?']",
-            " ",
-            summary
-        )
-    else:
-        summary = re.sub(
-            r"[^\u0900-\u097F\s.,!?0-9]",
-            " ",
-            summary
-        )
+    # --------------------------------------------------
+    # SAVE RECORDED AUDIO AS input_audio.wav
+    # --------------------------------------------------
 
-    summary = re.sub(r"\s+", " ", summary)
+    save_path = "input_audio.wav"
 
-    return summary.strip()
+    # Remove old file if exists
+    if os.path.exists(save_path):
+        os.remove(save_path)
 
-# --------------------------------------------------
-# FULL PIPELINE
-# --------------------------------------------------
-def full_pipeline(audio, language):
+    # Copy uploaded/recorded file
+    shutil.copy(audio_input, save_path)
 
-    if audio is None:
-        return "", "", None
+    print(f"\nAudio saved as: {save_path}")
 
-    print(f"\n--- Pipeline started ({language}) ---")
-    print(f"Device: {device}, CUDA: {torch.cuda.is_available()}")
+    # --------------------------------------------------
+    # PROCESS AUDIO FIRST
+    # --------------------------------------------------
 
-    # Load models
+    print("Processing audio to 16kHz mono...")
+
+    speech = process_audio(save_path)
+
+    # --------------------------------------------------
+    # LOAD MODELS ONLY AFTER BUTTON CLICK
+    # --------------------------------------------------
+
     load_models(language)
 
+    # --------------------------------------------------
     # ASR
+    # --------------------------------------------------
+
     print("Running ASR...")
-    raw_transcript = transcribe_audio(audio, max_seconds=15)
-    print(f"   Raw: {raw_transcript[:80]}...")
 
-    # Clean transcript
-    cleaned_transcript = clean_transcript(raw_transcript, language)
-    print(f"   Cleaned: {cleaned_transcript[:80]}...")
-
-    # Summarization
-    print("Running summarization...")
-    raw_summary = summarize_text(cleaned_transcript, language)
-
-    # Clean summary
-    cleaned_summary = clean_summary(raw_summary, language)
-    print(f"   Summary: {cleaned_summary[:80]}...")
-
-    print("--- Pipeline done ---\n")
-
-    # Return audio back so it doesn't go silent
-    return cleaned_transcript, cleaned_summary, audio
-
-# --------------------------------------------------
-# GRADIO UI
-# --------------------------------------------------
-with gr.Blocks(
-    title="Speech-to-Text Summarization System"
-) as demo:
-
-    gr.Markdown(
-        """
-        # 🎙️ Speech-to-Text Summarization System
-        Audio → ASR → Transcript Cleaning → Summarization → Smart Notes
-        """
+    inputs = asr_processor(
+        speech,
+        sampling_rate=16000,
+        return_tensors="pt",
+        padding=True
     )
+
+    input_values = inputs.input_values.to(device)
+
+    if device == "cuda":
+        input_values = input_values.to(torch.float16)
+
+    with torch.no_grad():
+        logits = asr_model(input_values).logits
+
+    predicted_ids = torch.argmax(logits, dim=-1)
+
+    transcript = asr_processor.batch_decode(
+        predicted_ids
+    )[0]
+
+    transcript = clean_text(transcript, language)
+
+    print("Transcript:", transcript)
+
+    # --------------------------------------------------
+    # SUMMARIZATION
+    # --------------------------------------------------
+
+    print("Running Summarization...")
+
+    summary = summarize_text(transcript, language)
+
+    summary = clean_text(summary, language)
+
+    print("Summary:", summary)
+
+    return transcript, summary, save_path
+
+# --------------------------------------------------
+# UI (UNCHANGED)
+# --------------------------------------------------
+with gr.Blocks(title="Speech-to-Text Summarization System") as demo:
+
+    gr.Markdown("# 🎙️ Speech-to-Text Summarization System")
 
     with gr.Row():
 
@@ -340,8 +330,8 @@ with gr.Blocks(
 
         audio_input = gr.Audio(
             sources=["microphone", "upload"],
-            type="numpy",
-            label="Record or Upload Audio (max 15s for mic)"
+            type="filepath",
+            label="Audio Input"
         )
 
     generate_button = gr.Button(
@@ -349,32 +339,36 @@ with gr.Blocks(
         variant="primary"
     )
 
-    # Playback so audio doesn't go silent after processing
     audio_output = gr.Audio(
-        label="Your Recording (Playback)",
-        type="numpy",
+        label="Playback",
+        type="filepath",
         interactive=False
     )
 
     transcript_output = gr.Textbox(
         label="Processed Transcript",
-        lines=10
+        lines=8
     )
 
     summary_output = gr.Textbox(
         label="Final Summary",
-        lines=6
+        lines=4
     )
 
     generate_button.click(
         fn=full_pipeline,
         inputs=[audio_input, language_input],
-        outputs=[transcript_output, summary_output, audio_output],
-        show_progress=True
+        outputs=[
+            transcript_output,
+            summary_output,
+            audio_output
+        ]
     )
 
 # --------------------------------------------------
 # LAUNCH
 # --------------------------------------------------
 if __name__ == "__main__":
-    demo.launch(ssl_verify=False, share=True)
+
+    # NO PRELOADING
+    demo.queue().launch(share=True)
